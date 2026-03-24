@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { protect } from '../middlewares/auth.middleware.js';
 
 export const router = Router();
 
@@ -16,3 +17,14 @@ router.post('/verify-otp', userVerifyOtpController);
 
 // Login
 router.post('/login', userLoginController);
+
+router.get('/me', protect, (req, res) => {
+  res.json({
+    user: req.user,
+  });
+});
+
+router.post('/logout', (req, res) => {
+  res.clearCookie('token');
+  res.json({ message: 'Logged out' });
+});

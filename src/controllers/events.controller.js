@@ -7,31 +7,26 @@ export const getAllEvents = async (req, res) => {
   try {
     const filters = {};
 
-    if (req.query.category) {
-      filters.category = req.query.category;
-    }
-    if (req.query.location) {
-      filters.location = req.query.location;
-    }
-    if (req.query.ticketPrice) {
-      filters.ticketPrice = req.query.ticketPrice;
-    }
+    if (req.query.category) filters.category = req.query.category;
+    if (req.query.location) filters.location = req.query.location;
+    if (req.query.ticketPrice) filters.ticketPrice = req.query.ticketPrice;
 
     const events = await eventModel.find(filters);
 
-    if (events.length === 0) {
-      return res.status(200).json({
-        message: 'No events available. Please create an event first.',
-        events: [],
-      });
-    }
+    const formattedEvents = events.map((event) => ({
+      ...event._doc,
+      availableSeats: event.totalSeats - (event.bookedSeats || 0),
+    }));
+
     return res.status(200).json({
-      message: 'Events fetched successfully',
-      events,
+      message: formattedEvents.length
+        ? 'Events fetched successfully'
+        : 'No events found',
+      events: formattedEvents,
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Unable to fetched events' });
+    return res.status(500).json({ message: 'Unable to fetch events' });
   }
 };
 
@@ -41,9 +36,7 @@ export const getEventById = async (req, res) => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        message: 'Invalid event id',
-      });
+      return res.status(400).json({ message: 'Invalid event id' });
     }
 
     const event = await eventModel
@@ -51,19 +44,21 @@ export const getEventById = async (req, res) => {
       .populate('createdBy', 'username email');
 
     if (!event) {
-      return res.status(404).json({
-        message: 'Event not found',
-      });
+      return res.status(404).json({ message: 'Event not found' });
     }
+
+    const bookedSeats = event.bookedSeats || 0;
+
     return res.status(200).json({
       message: 'Event fetched successfully',
-      event,
+      event: {
+        ...event.toObject(),
+        bookedSeats,
+      },
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({
-      message: 'Failed to fetch event',
-    });
+    return res.status(500).json({ message: 'Failed to fetch event' });
   }
 };
 
@@ -91,7 +86,6 @@ export const createEvent = async (req, res) => {
       location,
       category,
       totalSeats,
-      availableSeats,
       ticketPrice,
     } = req.body;
 
@@ -102,7 +96,6 @@ export const createEvent = async (req, res) => {
       !location ||
       !category ||
       !totalSeats ||
-      !availableSeats ||
       !ticketPrice
     ) {
       return res.status(400).json({
@@ -110,8 +103,8 @@ export const createEvent = async (req, res) => {
       });
     }
 
-    // Handle file upload
     let imageUrl = '';
+
     if (req.file) {
       try {
         const result = await uploadToCloudinary(req.file.buffer);
@@ -124,7 +117,6 @@ export const createEvent = async (req, res) => {
       return res.status(400).json({ message: 'Event image is required' });
     }
 
-    // Create event
     const event = await eventModel.create({
       title,
       description,
@@ -132,8 +124,8 @@ export const createEvent = async (req, res) => {
       location,
       category,
       totalSeats,
+      availableSeats: totalSeats, // ✅ IMPORTANT FIX
       ticketPrice,
-      availableSeats,
       imageUrl,
       createdBy: req.user._id,
     });
@@ -144,9 +136,7 @@ export const createEvent = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({
-      message: 'Failed to create event',
-    });
+    return res.status(500).json({ message: 'Failed to create event' });
   }
 };
 
@@ -160,28 +150,44 @@ export const updateEvent = async (req, res) => {
     }
 
     const event = await eventModel.findById(id);
+
     if (!event) {
       return res.status(404).json({ message: 'Event not found' });
     }
 
-    // Prepare update data
     const updateData = {};
+
     const fields = [
       'title',
       'description',
       'date',
       'location',
       'category',
-      'totalSeats',
       'ticketPrice',
     ];
+
     fields.forEach((field) => {
       if (req.body[field] !== undefined) {
         updateData[field] = req.body[field];
       }
     });
 
-    // Handle image upload
+    // ✅ Safe totalSeats update
+    if (req.body.totalSeats !== undefined) {
+      const newTotal = Number(req.body.totalSeats);
+      const bookedSeats = event.totalSeats - event.availableSeats;
+
+      if (newTotal < bookedSeats) {
+        return res.status(400).json({
+          message: 'Total seats cannot be less than already booked seats',
+        });
+      }
+
+      updateData.totalSeats = newTotal;
+      updateData.availableSeats = newTotal - bookedSeats;
+    }
+
+    // Handle image update
     if (req.file) {
       try {
         const result = await uploadToCloudinary(req.file.buffer);
@@ -193,7 +199,7 @@ export const updateEvent = async (req, res) => {
     }
 
     const updatedEvent = await eventModel.findByIdAndUpdate(id, updateData, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     });
 
@@ -213,27 +219,20 @@ export const deleteEvent = async (req, res) => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        message: 'Invalid event id',
-      });
+      return res.status(400).json({ message: 'Invalid event id' });
     }
 
     const event = await eventModel.findByIdAndDelete(id);
 
     if (!event) {
-      return res.status(404).json({
-        message: 'Event not found',
-      });
+      return res.status(404).json({ message: 'Event not found' });
     }
 
     return res.status(200).json({
-      message: 'Event Deleted successfully',
+      message: 'Event deleted successfully',
     });
   } catch (err) {
     console.error(err);
-
-    return res.status(500).json({
-      message: 'Failed to delete event',
-    });
+    return res.status(500).json({ message: 'Failed to delete event' });
   }
 };
