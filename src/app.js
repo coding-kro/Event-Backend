@@ -11,7 +11,7 @@ import { router as eventsRouter } from './routes/events.route.js';
 import { router as bookingRouter } from './routes/booking.route.js';
 
 app.use(cors({
-  origin:"http://localhost:5173",
+  origin:"https://event-frontend-murex.vercel.app",
     credentials: true
 }))
 
