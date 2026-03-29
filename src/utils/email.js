@@ -1,48 +1,12 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    type: 'OAuth2',
-    user: process.env.EMAIL_USER,
-    clientId: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
-    refreshToken: process.env.REFRESH_TOKEN,
-  },
-});
-
-// Verify the connection configuration
-transporter.verify((error, success) => {
-  if (error) {
-    console.error('Error connecting to email server:', error);
-  } else {
-    console.log('Email server is ready to send messages');
-  }
-});
-
-// Function to send email
-const sendEmail = async (to, subject, text, html) => {
-  try {
-    const info = await transporter.sendMail({
-      from: `"Backend Ledger" <${process.env.EMAIL_USER}>`, // sender address
-      to, // list of receivers
-      subject, // Subject line
-      text, // plain text body
-      html, // html body
-    });
-
-    console.log('Message sent: %s', info.messageId);
-    console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info));
-  } catch (error) {
-    console.error('Error sending email:', error);
-  }
-};
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 //  Booking Confirmation Email
 export const sendBookingEmail = async (userEmail, userName, eventTitle) => {
   try {
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
+    await resend.emails.send({
+      from: 'onboarding@resend.dev',
       to: userEmail,
       subject: `Booking Confirmed: ${eventTitle}`,
       html: `
@@ -106,10 +70,9 @@ export const sendBookingEmail = async (userEmail, userName, eventTitle) => {
       </body>
       </html>
       `,
-    };
+    });
 
-    await transporter.sendMail(mailOptions);
-    // console.log(`Booking email sent successfully to: ${userEmail}`);
+    console.log('Booking email sent');
   } catch (err) {
     console.error('Error sending booking email:', err);
   }
@@ -128,8 +91,8 @@ export const sendOTPEmail = async (userEmail, otp, type) => {
         ? 'Please use the following OTP to verify your new Eventify account.'
         : 'Please use the following OTP to verify and confirm your booking.';
 
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
+    await resend.emails.send({
+      from: 'onboarding@resend.dev',
       to: userEmail,
       subject: title,
       html: `
@@ -187,24 +150,19 @@ export const sendOTPEmail = async (userEmail, otp, type) => {
       </body>
       </html>
       `,
-    };
+    });
 
-    await transporter.sendMail(mailOptions);
-    // console.log(`OTP sent to ${userEmail} for ${type}`);
+    console.log('OTP email sent');
   } catch (err) {
     console.error('Error sending OTP email:', err);
   }
 };
 
 //  Booking Cancellation Email
-export const sendCancellationEmail = async (
-  userEmail,
-  eventTitle,
-  bookingId,
-) => {
+export const sendCancellationEmail = async (userEmail, eventTitle) => {
   try {
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
+    await resend.emails.send({
+      from: 'onboarding@resend.dev',
       to: userEmail,
       subject: `Booking Cancelled: ${eventTitle}`,
       html: `
@@ -268,10 +226,8 @@ export const sendCancellationEmail = async (
       </body>
       </html>
       `,
-    };
-
-    await transporter.sendMail(mailOptions);
-    // console.log(`Cancellation email sent successfully to: ${userEmail}`);
+    });
+    console.log('Cancellation email sent');
   } catch (err) {
     console.error('Error sending cancellation email:', err);
   }
